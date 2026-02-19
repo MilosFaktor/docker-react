@@ -2,19 +2,41 @@ name: Deploy Frontend
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
+    environment: docker-react
+    permissions:
+      contents: read
+      id-token: write   # <-- REQUIRED for OIDC
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Build test image
-        run: docker build -t myimage -f Dockerfile.dev .
+        run: docker build -t react-test -f Dockerfile.dev .
 
       - name: Run tests
-        run: docker run -e CI=true myimage npm test
+        run: docker run -e CI=true react-test npm test 
+      
+      - name: Create deploy bundle
+        run: zip -r deploy.zip . -x '*.git*' -x 'node_modules/*' -x '.github/*' 
+
+      - name: Configure AWS credentials (Assume Role via OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: eu-north-1
+
+      - name: Deploy to Elastic Beanstalk
+        uses: einaregilsson/beanstalk-deploy@v18
+        with:
+          application_name: frontend
+          environment_name: Frontend-env
+          existing_bucket_name: elasticbeanstalk-eu-north-1-418272797873
+          region: eu-nort-1
+          version_label: ${{ github.sha }}
+          deployment_package: deploy.zip
+          bucket_key: docker/app-${{ github.sha }}.zip
