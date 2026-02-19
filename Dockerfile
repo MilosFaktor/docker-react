@@ -12,3 +12,4 @@ FROM nginx:alpine
 
 COPY --from=builder /app/build /usr/share/nginx/html
 
+# dont need CMD because its default in NGNINX
