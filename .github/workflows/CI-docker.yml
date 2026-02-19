@@ -33,20 +33,11 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: eu-north-1
 
-      - name: Upload bundle to S3
-        run: |
-          aws s3 cp deploy.zip \
-            s3://elasticbeanstalk-eu-north-1-418272797873/docker/app-${GITHUB_SHA}.zip
-
-      - name: Create EB application version
-        run: |
-          aws elasticbeanstalk create-application-version \
-            --application-name "frontend" \
-            --version-label "${GITHUB_SHA}" \
-            --source-bundle S3Bucket="elasticbeanstalk-eu-north-1-418272797873",S3Key="docker/app-${GITHUB_SHA}.zip"
-
-      - name: Update EB environment
-        run: |
-          aws elasticbeanstalk update-environment \
-            --environment-name "Frontend-env" \
-            --version-label "${GITHUB_SHA}"
+      - name: Deploy to Elastic Beanstalk
+        uses: aws-actions/aws-elasticbeanstalk-deploy@v1.0.0
+        with:
+          application_name: frontend
+          environment_name: Frontend-env
+          version_label: ${{ github.sha }}-${{ github.run_number }}
+          deployment_package: deploy.zip
+          region: eu-north-1
