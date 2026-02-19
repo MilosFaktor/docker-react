@@ -8,9 +8,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: docker-react
-    concurrency:
-      group: production-deployment
-      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
@@ -32,12 +29,18 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: eu-north-1
+      
+      - name: Upload deploy bundle to S3 (EB bucket)
+        run: aws s3 cp deploy.zip s3://elasticbeanstalk-eu-north-1-418272797873/docker/deploy-${{ github.sha }}-${{ github.run_number }}.zip
+
 
       - name: Deploy to Elastic Beanstalk
         uses: aws-actions/aws-elasticbeanstalk-deploy@v1.0.0
         with:
-          application_name: frontend
-          environment_name: Frontend-env
-          version_label: ${{ github.sha }}-${{ github.run_number }}
-          deployment_package: deploy.zip
-          region: eu-north-1
+          application-name: frontend
+          environment-name: Frontend-env
+          version-label: docker-${{ github.sha }}-${{ github.run_number }}
+          deployment-package-path: deploy.zip
+          aws-region: eu-north-1
+          create-environment-if-not-exists: false
+          create-application-if-not-exists: false
