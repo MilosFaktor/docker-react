@@ -10,7 +10,7 @@ jobs:
     environment: docker-react
     permissions:
       contents: read
-      id-token: write   # <-- REQUIRED for OIDC
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -19,29 +19,31 @@ jobs:
         run: docker build -t react-test -f Dockerfile.dev .
 
       - name: Run tests
-        run: docker run -e CI=true react-test npm test 
-      
-      - name: Create deploy bundle
-        run: zip -r deploy.zip . -x '*.git*' -x 'node_modules/*' -x '.github/*' 
+        run: docker run --rm -e CI=true react-test npm test
 
-      - name: Configure AWS credentials (Assume Role via OIDC)
+      - name: Create deploy bundle
+        run: zip -r deploy.zip . -x '*.git*' -x 'node_modules/*' -x '.github/*'
+
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: eu-north-1
 
-      - name: Deploy to Elastic Beanstalk
-        uses: einaregilsson/beanstalk-deploy@v18
-        with:
-          aws_access_key: ${{ env.AWS_ACCESS_KEY_ID }}
-          aws_secret_key: ${{ env.AWS_SECRET_ACCESS_KEY }}
-          aws_session_token: ${{ env.AWS_SESSION_TOKEN }}
-          application_name: frontend
-          environment_name: Frontend-env
-          existing_bucket_name: elasticbeanstalk-eu-north-1-418272797873
-          region: eu-north-1
-          version_label: ${{ github.sha }}
-          deployment_package: deploy.zip
+      - name: Upload bundle to S3
+        run: |
+          aws s3 cp deploy.zip \
+            s3://elasticbeanstalk-eu-north-1-418272797873/docker/app-${GITHUB_SHA}.zip
 
+      - name: Create EB application version
+        run: |
+          aws elasticbeanstalk create-application-version \
+            --application-name "frontend" \
+            --version-label "${GITHUB_SHA}" \
+            --source-bundle S3Bucket="elasticbeanstalk-eu-north-1-418272797873",S3Key="docker/app-${GITHUB_SHA}.zip"
 
-
+      - name: Update EB environment
+        run: |
+          aws elasticbeanstalk update-environment \
+            --environment-name "Frontend-env" \
+            --version-label "${GITHUB_SHA}"
