@@ -29,10 +29,6 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: eu-north-1
-      
-      - name: Upload deploy bundle to S3 (EB bucket)
-        run: aws s3 cp deploy.zip s3://elasticbeanstalk-eu-north-1-418272797873/docker/deploy-${{ github.sha }}-${{ github.run_number }}.zip
-
 
       - name: Deploy to Elastic Beanstalk
         uses: aws-actions/aws-elasticbeanstalk-deploy@v1.0.0
