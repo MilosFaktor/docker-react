@@ -24,14 +24,6 @@ jobs:
       - name: Create deploy bundle
         run: zip -r deploy.zip . -x '*.git*' -x 'node_modules/*' -x '.github/*' 
 
-      - name: Debug identity
-        run: |
-          echo "GITHUB_REPOSITORY=$GITHUB_REPOSITORY"
-          echo "GITHUB_REF=$GITHUB_REF"
-
-      - name: Print role ARN
-        run: echo "ROLE=${{ secrets.AWS_ROLE_TO_ASSUME }}"
-
       - name: Configure AWS credentials (Assume Role via OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
