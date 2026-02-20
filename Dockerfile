@@ -2,7 +2,7 @@ FROM node:20-alpine3.23 AS builder
 
 WORKDIR /app
 
-COPY package.json .
+COPY package.json package-lock.json ./
 RUN npm install
 COPY . .
 
