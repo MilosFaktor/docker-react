@@ -23,12 +23,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # ---------- PR + push: build test image (cached) + run tests ----------
       - name: Build test image (cached)
         uses: docker/build-push-action@v5
         with:
           context: .
           file: Dockerfile.dev
-          load: true                  # loads image into local Docker so "docker run" can use it
+          load: true
           tags: react-test:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -36,10 +37,7 @@ jobs:
       - name: Run tests
         run: docker run --rm -e CI=true react-test:latest npm test
 
-      - name: Create deploy bundle
-        if: github.event_name == 'push'
-        run: zip -r deploy.zip . -x '*.git*' -x 'node_modules/*' -x '.github/*'
-
+      # ---------- push only: AWS auth ----------
       - name: Configure AWS credentials (OIDC)
         if: github.event_name == 'push'
         uses: aws-actions/configure-aws-credentials@v4
@@ -47,6 +45,48 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: eu-north-1
 
+      # ---------- push only: login to ECR ----------
+      - name: Login to Amazon ECR
+        if: github.event_name == 'push'
+        run: |
+          aws ecr get-login-password --region eu-north-1 \
+            | docker login --username AWS --password-stdin 418272797873.dkr.ecr.eu-north-1.amazonaws.com
+
+      # ---------- push only: build + push PROD image to ECR (cached layers) ----------
+      - name: Build and push prod image to ECR (cached)
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: 418272797873.dkr.ecr.eu-north-1.amazonaws.com/milosfaktor/frontend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ---------- push only: generate Dockerrun that points to the just-pushed image ----------
+      - name: Generate Dockerrun.aws.json
+        if: github.event_name == 'push'
+        run: |
+          cat > Dockerrun.aws.json << 'EOF'
+          {
+            "AWSEBDockerrunVersion": "1",
+            "Image": {
+              "Name": "418272797873.dkr.ecr.eu-north-1.amazonaws.com/milosfaktor/frontend:${{ github.sha }}",
+              "Update": "true"
+            },
+            "Ports": [
+              { "ContainerPort": "80" }
+            ]
+          }
+          EOF
+
+      # ---------- push only: zip ONLY Dockerrun ----------
+      - name: Create deploy bundle (Dockerrun only)
+        if: github.event_name == 'push'
+        run: zip -r deploy.zip Dockerrun.aws.json
+
+      # ---------- push only: deploy to EB ----------
       - name: Deploy to Elastic Beanstalk
         if: github.event_name == 'push'
         uses: aws-actions/aws-elasticbeanstalk-deploy@v1.0.0
