@@ -7,7 +7,7 @@ function App() {
       <header className="App-header">
         <img src={logo} className="App-logo" alt="logo" />
         <p>
-          deployed via ECR v1
+          deployed via ECR
         </p>
         <a
           className="App-link"
