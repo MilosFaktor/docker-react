@@ -1,70 +1,250 @@
-# Getting Started with Create React App
+# # React Frontend — Docker Dev/Prod + Secure CI/CD (GitHub Actions OIDC → ECR → Elastic Beanstalk)
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+This repository contains a React frontend application with:
 
-## Available Scripts
+- Local development in Docker (hot reload via volumes)
+- Containerized testing (interactive + CI mode)
+- Optimized production build (multi-stage Docker → NGINX)
+- CI/CD pipeline that builds in GitHub Actions, pushes to Amazon ECR, and deploys via Elastic Beanstalk
 
-In the project directory, you can run:
+---
 
-### `npm start`
+## Architecture Overview
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+LOCAL
+Docker (or Docker Compose)
+→ Dev server with live reload
+→ Test runner inside container
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+CI (GitHub Actions)
+→ Run tests on Pull Request
+→ Build Docker image with caching
+→ Push image to Amazon ECR
+→ Deploy to Elastic Beanstalk
 
-### `npm test`
+PRODUCTION
+Elastic Beanstalk
+→ Pulls prebuilt image from ECR
+→ Runs container (NGINX serving static React build)
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+This separates build-time responsibilities (CI) from runtime responsibilities (platform), following artifact-based deployment principles.
 
-### `npm run build`
+---
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Branch Strategy
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+- `main` is protected
+- Development happens in `feature/*` branches
+- Pull Requests required to merge
+- Tests must pass before merge
+- Push to `main` triggers deployment
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+This ensures production stability and enforces CI validation before deployment.
+---
 
-### `npm run eject`
+## Docker Images
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### Development — Dockerfile.dev
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+Used for local dev + tests.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+```dockerfile
+FROM node:20-alpine3.23
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+WORKDIR /app
 
-## Learn More
+COPY package.json .
+RUN npm install
+COPY . .
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+CMD ["npm", "run", "start"]
+```
+Caching Strategy:
+- Copying package.json before npm install allows Docker to cache dependency layers.
+- npm install only re-runs when package.json changes.
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+Purpose:
+- Runs React dev server
+- Supports bind mounts for hot reload
+- Matches Node version used in build stage
 
-### Code Splitting
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+### Production — Dockerfile
 
-### Analyzing the Bundle Size
+Multi-stage build:
+1) Build React app
+2) Serve static assets via NGINX
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+```dockerfile
+FROM node:20-alpine3.23 AS builder
 
-### Making a Progressive Web App
+WORKDIR /app
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+COPY package.json .
+RUN npm install
+COPY . .
 
-### Advanced Configuration
+RUN npm run build
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+FROM nginx:alpine
+EXPOSE 80
+COPY --from=builder /app/build /usr/share/nginx/html
+```
 
-### Deployment
+Benefits:
+- Smaller final image (~60MB)
+- No dev dependencies in runtime
+- Clean build/runtime separation
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+---
 
-### `npm run build` fails to minify
+## NPM Commands
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+```bash
+npm run start   # start dev server
+npm run test    # run tests (watch mode locally)
+npm run build   # production build
+```
+
+---
+
+## Local Development (Docker + Volumes)
+
+### Build dev image
+
+```bash
+docker build -f Dockerfile.dev -t milosfaktor/nginx .
+```
+
+### Run dev container with live reload
+
+```bash
+docker run -p 3000:3000 \
+  -v /app/node_modules \
+  -v $(pwd):/app \
+  milosfaktor/nginx:latest
+```
+
+Explanation:
+- .:/app mounts local source code
+- /app/node_modules prevents host override of container dependencies
+
+Open:
+http://localhost:3000
+
+---
+
+## Testing in Docker
+
+### Run tests in CI mode (exit after completion)
+
+```bash
+docker run -e CI=true milosfaktor/nginx:latest npm test
+```
+
+Note:
+Use CI=true (not CI=ture) so tests exit automatically.
+
+### Run tests interactively (watch mode)
+
+```bash
+docker run -it milosfaktor/nginx:latest npm test
+```
+
+---
+
+## Run Tests Inside a Running Dev Container
+
+1) Start container with volumes
+
+```bash
+docker run -p 3000:3000 \
+  -v /app/node_modules \
+  -v $(pwd):/app \
+  milosfaktor/nginx:latest
+```
+
+2) In a new terminal:
+
+```bash
+docker ps
+```
+
+3) Execute tests inside container:
+
+```bash
+docker exec -it <container_id> npm run test
+```
+
+---
+
+## Docker Compose (Dev + Tests)
+
+Run both services:
+
+docker compose -f docker-compose-dev.yml up --build
+
+Example docker-compose-dev.yml:
+
+```yml
+version: "3"
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - /app/node_modules
+      - .:/app
+
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - /app/node_modules
+      - .:/app
+    command: ["npm", "run", "test"]
+```
+---
+
+## CI/CD Optimization
+
+Initial setup:
+- Elastic Beanstalk built Docker image during deployment
+- No Docker layer caching
+- ~4 minute deployments
+
+Refactored setup:
+- GitHub Actions builds Docker image
+- Docker BuildKit caching enabled
+- Image tagged with commit SHA
+- Image pushed to Amazon ECR
+- Elastic Beanstalk pulls prebuilt image
+
+Result:
+- Deployment time reduced to ~2 minutes
+- Immutable SHA-based deployments
+- Deterministic rollbacks
+- Clean artifact-based pipeline
+
+---
+
+## AWS Components Used
+
+- Amazon ECR (Docker image registry)
+- Elastic Beanstalk (Docker environment)
+- IAM Role + OIDC trust policy for GitHub Actions (assume role to push to ECR and deploy)
+- IAM Role for Elastic Beanstalk EC2 (ECR pull)
+
+## GitHub Actions Authentication (OIDC)
+
+This pipeline uses **GitHub Actions OIDC** (OpenID Connect) to assume an **AWS IAM Role** at runtime, instead of storing long-lived credentials (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) as GitHub Secrets.
+
+Benefits:
+- No static access keys in GitHub
+- Short-lived credentials (assume role)
+- Least-privilege access via IAM role + trust policy
