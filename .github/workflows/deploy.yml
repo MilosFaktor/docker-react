@@ -23,7 +23,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # ---------- PR + push: build test image (cached) + run tests ----------
       - name: Build test image (cached)
         uses: docker/build-push-action@v5
         with:
@@ -37,7 +36,7 @@ jobs:
       - name: Run tests
         run: docker run --rm -e CI=true react-test:latest npm test
 
-      # ---------- push only: AWS auth ----------
+      # ---------- push only ----------
       - name: Configure AWS credentials (OIDC)
         if: github.event_name == 'push'
         uses: aws-actions/configure-aws-credentials@v4
@@ -45,14 +44,14 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: eu-north-1
 
-      # ---------- push only: login to ECR ----------
+      # ---------- push only ----------
       - name: Login to Amazon ECR
         if: github.event_name == 'push'
         run: |
           aws ecr get-login-password --region eu-north-1 \
             | docker login --username AWS --password-stdin 418272797873.dkr.ecr.eu-north-1.amazonaws.com
 
-      # ---------- push only: build + push PROD image to ECR (cached layers) ----------
+      # ---------- push only ----------
       - name: Build and push prod image to ECR (cached)
         if: github.event_name == 'push'
         uses: docker/build-push-action@v5
@@ -64,7 +63,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # ---------- push only: generate Dockerrun that points to the just-pushed image ----------
+      # ---------- push only ----------
       - name: Generate Dockerrun.aws.json
         if: github.event_name == 'push'
         run: |
@@ -81,12 +80,12 @@ jobs:
           }
           EOF
 
-      # ---------- push only: zip ONLY Dockerrun ----------
+      # ---------- push only ----------
       - name: Create deploy bundle (Dockerrun only)
         if: github.event_name == 'push'
         run: zip -r deploy.zip Dockerrun.aws.json
 
-      # ---------- push only: deploy to EB ----------
+      # ---------- push only ----------
       - name: Deploy to Elastic Beanstalk
         if: github.event_name == 'push'
         uses: aws-actions/aws-elasticbeanstalk-deploy@v1.0.0
