@@ -31,6 +31,27 @@ This separates build-time responsibilities (CI) from runtime responsibilities (p
 
 ---
 
+## Deployment & Security Proof (Screenshots)
+1. Successful GitHub Actions Deployment (Cached + OIDC + ECR)
+
+<img src="screenshots/1-GitHubActions-successfull-deployment-run.png" width="800">
+
+2. Protected `main` Branch (Required Checks Before Merge)
+
+<img src="screenshots/2-github-branch-protection-rule.png" width="800">
+
+3. GitHub Actions OIDC → AWS IAM Trust Relationship
+
+<img src="screenshots/3-OIDC-trust-relationship-IAMrole.png" width="800">
+
+4. Immutable Docker Images in Amazon ECR (SHA Tagged)
+
+<img src="screenshots/4-ECR-image-list-with-SHA-tags.png" width="800">
+
+5. Elastic Beanstalk Environment (Healthy & Running)
+
+<img src="screenshots/5-ElasticBeanstalk-running-ok.png" width="800">
+
 ## Branch Strategy
 
 - `main` is protected
