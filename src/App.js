@@ -7,9 +7,7 @@ function App() {
       <header className="App-header">
         <img src={logo} className="App-logo" alt="logo" />
         <p>
-          I was changed on the feature branch
-          I am testing second time after changing instance from
-          t3.micro to t3.small
+          testing cached version
         </p>
         <a
           className="App-link"
