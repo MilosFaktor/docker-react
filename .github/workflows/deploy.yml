@@ -10,6 +10,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: docker-react
+    concurrency:
+      group: frontend-${{ github.ref }}
+      cancel-in-progress: true
     permissions:
       contents: read
       id-token: write
